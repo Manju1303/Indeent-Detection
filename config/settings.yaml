@@ -58,7 +58,16 @@ pose:
   backend: "mediapipe"            # "mediapipe" or "yolov8-pose"
   min_detection_confidence: 0.5
   min_tracking_confidence: 0.5
-  run_every_n_frames: 3           # only run pose every N frames (saves CPU)
+  run_every_n_frames: 1           # process pose on frames
+
+# ── INTENT & PRE-ACTION PREDICTION ────────────────────────
+intent:
+  enabled: true
+  prediction_window_ms: 300       # Sub-300ms pre-action prediction window
+  velocity_threshold_px_s: 150.0
+  acceleration_threshold_px_s2: 300.0
+  draw_ghost_skeleton: true       # Draw projected pose (+300ms)
+  draw_trajectory_arrow: true
 
 # ── VIOLENCE DETECTION ─────────────────────────────────────
 violence:

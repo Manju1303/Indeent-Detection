@@ -1,7 +1,6 @@
 """
 core/pipeline.py
-Main processing pipeline that connects all components per camera.
-Handles frame-skip, pose triggering, and result aggregation.
+Main processing pipeline integrating Detection, Tracking, Pose/Outline Analysis, and Sub-300ms Intent Prediction.
 """
 
 import cv2
@@ -12,6 +11,8 @@ from typing import Optional, Dict, List
 
 from core.detector import DetectionEngine
 from core.tracker import ByteTracker
+from core.pose_estimator import PoseEstimator, HumanPose
+from core.intent_predictor import IntentPredictor, IntentPrediction
 from core.violence_detector import ViolenceDetector
 from core.theft_detector import TheftDetector
 from utils.drawing import FrameDrawer
@@ -24,8 +25,9 @@ class PipelineResult:
     """All outputs from a single frame pass."""
     __slots__ = [
         "camera_id", "frame", "annotated_frame", "frame_number",
-        "timestamp", "detections", "tracked", "violence_detected",
-        "violence_score", "theft_events", "fps", "processing_ms",
+        "timestamp", "detections", "tracked", "poses", "predictions",
+        "violence_detected", "violence_score", "theft_events",
+        "fps", "processing_ms",
     ]
 
     def __init__(self, camera_id: int):
@@ -36,6 +38,8 @@ class PipelineResult:
         self.timestamp         = time.time()
         self.detections        = []
         self.tracked           = []
+        self.poses             = []
+        self.predictions       = []
         self.violence_detected = False
         self.violence_score    = 0.0
         self.theft_events      = []
@@ -45,8 +49,7 @@ class PipelineResult:
 
 class CameraPipeline:
     """
-    Per-camera processing pipeline.
-    Instantiate one per camera stream.
+    Per-camera processing pipeline with sub-300ms Human Intent & Movement Prediction.
     """
 
     def __init__(
@@ -55,6 +58,8 @@ class CameraPipeline:
         camera_name: str,
         detector: DetectionEngine,
         tracker_config: dict,
+        pose_config: dict,
+        intent_config: dict,
         violence_config: dict,
         theft_config: dict,
         zones: list,
@@ -65,12 +70,14 @@ class CameraPipeline:
 
         self.detector  = detector
         self.tracker   = ByteTracker(tracker_config)
+        self.pose_est  = PoseEstimator(pose_config)
+        self.intent_pred = IntentPredictor(intent_config)
         self.violence  = ViolenceDetector(violence_config)
         self.theft     = TheftDetector(theft_config, zones)
         self.drawer    = FrameDrawer()
         self.fps_ctr   = FPSCounter()
 
-        self.frame_skip    = max(1, performance_config.get("frame_skip", 2))
+        self.frame_skip    = max(1, performance_config.get("frame_skip", 1))
         self.max_fps       = performance_config.get("max_fps", 30)
         self._frame_count  = 0
         self._last_frame_t = 0.0
@@ -81,7 +88,6 @@ class CameraPipeline:
         """
         self._frame_count += 1
 
-        # FPS cap
         now = time.time()
         if self.max_fps > 0:
             min_interval = 1.0 / self.max_fps
@@ -89,7 +95,6 @@ class CameraPipeline:
                 return None
         self._last_frame_t = now
 
-        # Frame skip
         if self._frame_count % self.frame_skip != 0:
             return None
 
@@ -97,22 +102,38 @@ class CameraPipeline:
         result  = PipelineResult(self.camera_id)
         result.frame        = frame
         result.frame_number = self._frame_count
+        result.timestamp    = now
 
-        # ── 1. Object Detection ───────────────────────────────
+        # ── 1. Object & Human Detection ───────────────────────
         detections = self.detector.detect(frame)
         result.detections = detections
 
-        # ── 2. Tracking ───────────────────────────────────────
+        # ── 2. Multi-Object Tracking ──────────────────────────
         tracked = self.tracker.update(detections)
         result.tracked = tracked
 
-        # ── 3. Violence Detection (every frame for LSTM buffer) ──
+        # ── 3. Pose, Keypoint & Outline Extraction ────────────
+        persons = self.detector.get_persons(tracked)
+        poses = []
+        predictions = []
+
+        for p_det in persons:
+            pose = self.pose_est.estimate_pose(frame, p_det.bbox, p_det.track_id)
+            poses.append(pose)
+
+            # Sub-300ms Pre-Action Movement Prediction
+            pred = self.intent_pred.predict_intent(pose, timestamp=now)
+            predictions.append(pred)
+
+        result.poses = poses
+        result.predictions = predictions
+
+        # ── 4. Threat & Violence Detection ────────────────────
         violence_detected, violence_score = self.violence.update(frame)
         result.violence_detected = violence_detected
         result.violence_score    = violence_score
 
-        # ── 4. Theft Detection ────────────────────────────────
-        persons = self.detector.get_persons(tracked)
+        # ── 5. Theft & Interaction Engine ─────────────────────
         objects = self.detector.get_objects(tracked)
         weapons = self.detector.get_weapons(tracked)
 
@@ -125,10 +146,12 @@ class CameraPipeline:
         )
         result.theft_events = theft_events
 
-        # ── 5. Draw Annotations ───────────────────────────────
+        # ── 6. Draw Visual Overlay & Ghost Skeleton (+300ms) ──
         annotated = self.drawer.draw(
             frame=frame.copy(),
             detections=tracked,
+            poses=poses,
+            predictions=predictions,
             violence_score=violence_score,
             violence_detected=violence_detected,
             theft_events=theft_events,
@@ -138,7 +161,7 @@ class CameraPipeline:
         )
         result.annotated_frame = annotated
 
-        # ── 6. Metrics ────────────────────────────────────────
+        # ── 7. Performance Metrics ───────────────────────────
         result.fps           = self.fps_ctr.update()
         result.processing_ms = (time.perf_counter() - t_start) * 1000
 
@@ -159,12 +182,13 @@ class MultiCameraPipeline:
     def _build_pipelines(self):
         detector_config     = self.settings["detection"]
         tracker_config      = self.settings["tracking"]
+        pose_config         = self.settings.get("pose", {})
+        intent_config       = self.settings.get("intent", {})
         violence_config     = self.settings["violence"]
         theft_config        = self.settings["theft"]
         perf_config         = self.settings["performance"]
         camera_configs      = self.settings["cameras"]
 
-        # Share one detector across all cameras (saves GPU memory)
         shared_detector = DetectionEngine({
             **detector_config,
             "use_fp16": perf_config.get("use_fp16", False),
@@ -179,12 +203,14 @@ class MultiCameraPipeline:
                 camera_name=cam_cfg.get("name", f"Camera {cam_id}"),
                 detector=shared_detector,
                 tracker_config=tracker_config,
+                pose_config=pose_config,
+                intent_config=intent_config,
                 violence_config=violence_config,
                 theft_config=theft_config,
                 zones=cam_cfg.get("zones", []),
                 performance_config=perf_config,
             )
-            logger.info(f"[Pipeline] Camera {cam_id} '{cam_cfg['name']}' pipeline ready.")
+            logger.info(f"[Pipeline] Camera {cam_id} '{cam_cfg['name']}' Intent Prediction Pipeline Ready.")
 
     def process_frame(self, camera_id: int, frame: np.ndarray) -> Optional[PipelineResult]:
         if camera_id not in self.pipelines:
