@@ -3,264 +3,317 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🔒 Security Monitor Dashboard</title>
+<title>🔒 Human Intent & Pre-Action AI — Live Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: 'Segoe UI', sans-serif;
-    background: #0d0d1a;
-    color: #e0e0f0;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #090a16;
+    color: #e2e8f0;
     min-height: 100vh;
+    overflow-x: hidden;
   }
   header {
-    background: linear-gradient(135deg, #1a1a2e, #16213e);
-    padding: 16px 24px;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(12px);
+    padding: 16px 28px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid #2a2a4a;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    position: sticky;
+    top: 0;
+    z-index: 100;
   }
-  header h1 { font-size: 1.3rem; color: #7eb8f7; letter-spacing: 1px; }
-  .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: #4caf50; animation: pulse 2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-  .main { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; padding: 20px; }
-  .stat-card {
-    background: #12122a;
-    border: 1px solid #2a2a4a;
-    border-radius: 10px;
-    padding: 18px;
-    text-align: center;
-    transition: border-color .3s;
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-logo {
+    width: 36px; height: 36px; background: linear-gradient(135deg, #00f2fe, #4facfe);
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-weight: 800; color: #090a16; font-size: 1.1rem; box-shadow: 0 0 16px rgba(79, 172, 254, 0.4);
   }
-  .stat-card:hover { border-color: #4a7fff; }
-  .stat-card .value { font-size: 2.2rem; font-weight: bold; margin: 8px 0; }
-  .stat-card .label { font-size: 0.8rem; color: #8888aa; text-transform: uppercase; letter-spacing: 1px; }
-  .c-blue   { color: #7eb8f7; }
-  .c-red    { color: #ff4d4d; }
-  .c-orange { color: #ff9944; }
-  .c-yellow { color: #ffd740; }
-  .c-green  { color: #4caf50; }
-  .c-purple { color: #bb86fc; }
-  .section { padding: 0 20px 20px; }
-  .section h2 { font-size: 1rem; color: #7eb8f7; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #2a2a4a; }
-  .event-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-  .event-table th { background: #1a1a2e; padding: 10px 12px; text-align: left; color: #8888aa; font-weight: 500; }
-  .event-table td { padding: 10px 12px; border-bottom: 1px solid #1e1e3a; }
-  .event-table tr:hover td { background: #1a1a2e; }
-  .badge {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
+  header h1 { font-size: 1.25rem; font-weight: 700; color: #f8fafc; letter-spacing: -0.02em; }
+  header .sub { font-size: 0.78rem; color: #38bdf8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  .status-badge {
+    display: flex; align-items: center; gap: 8px; background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.3); padding: 6px 14px; border-radius: 20px;
+    font-size: 0.82rem; color: #10b981; font-weight: 600;
   }
-  .badge-violence { background: #ff4d4d22; color: #ff4d4d; border: 1px solid #ff4d4d44; }
-  .badge-theft_high { background: #ff4d4d22; color: #ff6b6b; border: 1px solid #ff4d4d44; }
-  .badge-theft_medium { background: #ff994422; color: #ff9944; border: 1px solid #ff994444; }
-  .badge-theft_low { background: #ffd74022; color: #ffd740; border: 1px solid #ffd74044; }
-  .badge-weapon { background: #bb86fc22; color: #bb86fc; border: 1px solid #bb86fc44; }
-  .camera-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-  .cam-card {
-    background: #12122a;
-    border: 1px solid #2a2a4a;
-    border-radius: 8px;
-    padding: 14px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 10px #10b981; animation: pulse 1.8s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(0.85)} }
+
+  .layout { display: grid; grid-template-columns: 1fr 380px; gap: 20px; padding: 24px; max-width: 1700px; margin: 0 auto; }
+  @media(max-width: 1200px) { .layout { grid-template-columns: 1fr; } }
+
+  .card {
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
   }
-  .cam-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
-  .cam-dot.ok { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
-  .cam-dot.err { background: #ff4d4d; }
-  .cam-info .name { font-weight: 600; font-size: 0.9rem; }
-  .cam-info .fps { font-size: 0.75rem; color: #8888aa; margin-top: 2px; }
-  .perf-bar { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 0.82rem; }
-  .bar-track { flex: 1; height: 6px; background: #2a2a4a; border-radius: 3px; overflow: hidden; }
-  .bar-fill { height: 100%; border-radius: 3px; transition: width .5s; }
-  .alert-banner {
-    display: none;
-    background: #ff1a1a;
-    color: white;
-    text-align: center;
-    padding: 12px;
-    font-weight: bold;
-    font-size: 1rem;
-    animation: blink 1s infinite;
+
+  .card-title {
+    font-size: 0.92rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;
+    margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;
   }
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.6} }
-  .last-update { font-size: 0.75rem; color: #555588; padding: 0 20px 16px; }
+
+  /* Live Stream Player */
+  .video-container {
+    position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: #000;
+    border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    aspect-ratio: 16/9;
+  }
+  .video-feed { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .video-overlay-hud {
+    position: absolute; top: 14px; left: 14px; right: 14px;
+    display: flex; align-items: center; justify-content: space-between; pointer-events: none;
+  }
+  .hud-tag {
+    background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 6px 12px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; color: #38bdf8;
+  }
+
+  /* Telemetry Grid */
+  .telemetry-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 20px; }
+  @media(max-width: 768px) { .telemetry-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  .stat-box {
+    background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 14px; border-radius: 10px; text-align: center;
+  }
+  .stat-box .val { font-size: 1.6rem; font-weight: 800; margin: 4px 0; color: #f8fafc; }
+  .stat-box .lbl { font-size: 0.72rem; color: #64748b; text-transform: uppercase; font-weight: 600; }
+
+  /* Intent Alert Box */
+  .intent-box {
+    background: linear-gradient(135deg, rgba(14, 165, 233, 0.15), rgba(59, 130, 246, 0.08));
+    border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; padding: 18px; margin-bottom: 20px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .intent-box .intent-title { font-size: 0.75rem; color: #38bdf8; text-transform: uppercase; font-weight: 700; }
+  .intent-box .intent-val { font-size: 1.3rem; font-weight: 800; color: #f8fafc; margin-top: 4px; }
+  .risk-badge {
+    padding: 6px 14px; border-radius: 20px; font-size: 0.78rem; font-weight: 800; letter-spacing: 0.05em;
+  }
+  .risk-NORMAL { background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); }
+  .risk-CAUTION { background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4); }
+  .risk-WARNING { background: rgba(249, 115, 22, 0.2); color: #f97316; border: 1px solid rgba(249, 115, 22, 0.4); }
+  .risk-HIGH_RISK { background: rgba(239, 68, 68, 0.25); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.5); animation: pulse 1s infinite; }
+
+  /* Event Table */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th { background: rgba(30, 41, 59, 0.8); padding: 10px 12px; text-align: left; color: #64748b; font-weight: 600; text-transform: uppercase; }
+  td { padding: 10px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); color: #cbd5e1; }
+  tr:hover td { background: rgba(30, 41, 59, 0.4); }
+
+  .badge-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700; }
+  .b-violence { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+  .b-theft { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+  .b-weapon { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
+
+  /* Performance Bars */
+  .perf-item { margin-bottom: 12px; }
+  .perf-hdr { display: flex; justify-content: space-between; font-size: 0.78rem; color: #94a3b8; margin-bottom: 4px; font-weight: 600; }
+  .bar-bg { height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
 </style>
 </head>
 <body>
 
-<div class="alert-banner" id="alertBanner">🚨 CRITICAL ALERT DETECTED</div>
-
 <header>
-  <h1>🔒 Security Monitor — Real-Time Dashboard</h1>
-  <div style="font-size:.85rem;color:#8888aa">
-    <span class="status-dot"></span>Live
+  <div class="brand">
+    <div class="brand-logo">AI</div>
+    <div>
+      <h1>Human Intent & Pre-Action Monitor</h1>
+      <div class="sub">Primary Feature: Torso Core &amp; Sub-300ms Movement Prediction</div>
+    </div>
+  </div>
+  <div class="status-badge">
+    <div class="status-dot"></div>
+    <span>LIVE STREAM ACTIVE</span>
   </div>
 </header>
 
-<!-- Stats Grid -->
-<div class="main" id="statsGrid">
-  <div class="stat-card">
-    <div class="label">Total Events</div>
-    <div class="value c-blue" id="statTotal">–</div>
+<div class="layout">
+  <!-- Left Main Column: Live Video Feed & Primary Telemetry -->
+  <div style="display: flex; flex-direction: column; gap: 20px;">
+    <!-- Live Video Player Card -->
+    <div class="card">
+      <div class="card-title">
+        <span>📷 Live Camera Stream 0 — Real-Time Detection &amp; Ghost Skeleton (+300ms)</span>
+        <span style="font-size:0.75rem; color:#10b981; font-weight:600;">● 30 FPS Stream</span>
+      </div>
+      <div class="video-container">
+        <img src="/video_feed/0" class="video-feed" alt="Live Video Detection Feed" id="videoFeed">
+        <div class="video-overlay-hud">
+          <div class="hud-tag">TORSO CORE: ACTIVE</div>
+          <div class="hud-tag" style="color:#10b981;">LATENCY: &lt; 0.1ms</div>
+        </div>
+      </div>
+
+      <!-- Telemetry Cards Grid -->
+      <div class="telemetry-grid">
+        <div class="stat-box">
+          <div class="lbl">Torso Pitch</div>
+          <div class="val" id="valPitch" style="color:#38bdf8;">0°</div>
+          <div style="font-size:0.7rem; color:#64748b;">Spine Tilt Angle</div>
+        </div>
+        <div class="stat-box">
+          <div class="lbl">Torso Roll</div>
+          <div class="val" id="valRoll" style="color:#a855f7;">0°</div>
+          <div style="font-size:0.7rem; color:#64748b;">Side Shoulder Tilt</div>
+        </div>
+        <div class="stat-box">
+          <div class="lbl">Prediction Horizon</div>
+          <div class="val" style="color:#10b981;">300ms</div>
+          <div style="font-size:0.7rem; color:#64748b;">Sub-300ms Window</div>
+        </div>
+        <div class="stat-box">
+          <div class="lbl">Inference Latency</div>
+          <div class="val" id="valLatency" style="color:#f59e0b;">0.05ms</div>
+          <div style="font-size:0.7rem; color:#64748b;">Sub-Millisecond</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Security & Pre-Action Event Table -->
+    <div class="card">
+      <div class="card-title">📋 Real-Time Intent &amp; Threat Audit Log</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Event Type</th>
+              <th>Camera</th>
+              <th>Confidence</th>
+            </tr>
+          </thead>
+          <tbody id="eventsTbody">
+            <tr><td colspan="4" style="text-align:center; color:#64748b; padding:24px;">Monitoring live camera streams...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
-  <div class="stat-card">
-    <div class="label">Today</div>
-    <div class="value c-purple" id="statToday">–</div>
-  </div>
-  <div class="stat-card">
-    <div class="label">Violence</div>
-    <div class="value c-red" id="statViolence">–</div>
-  </div>
-  <div class="stat-card">
-    <div class="label">Theft High</div>
-    <div class="value c-red" id="statTheftHigh">–</div>
-  </div>
-  <div class="stat-card">
-    <div class="label">Theft Medium</div>
-    <div class="value c-orange" id="statTheftMed">–</div>
-  </div>
-  <div class="stat-card">
-    <div class="label">Theft Low</div>
-    <div class="value c-yellow" id="statTheftLow">–</div>
-  </div>
-  <div class="stat-card">
-    <div class="label">Weapons</div>
-    <div class="value c-purple" id="statWeapons">–</div>
+
+  <!-- Right Sidebar Column: Intent Predictions & System Stats -->
+  <div style="display: flex; flex-direction: column; gap: 20px;">
+    <!-- Active Intent Box -->
+    <div class="card">
+      <div class="card-title">🧠 Pre-Action Intent (<300ms)</div>
+      <div class="intent-box">
+        <div>
+          <div class="intent-title">Predicted Movement</div>
+          <div class="intent-val" id="intentVal">Torso Stable</div>
+        </div>
+        <div class="risk-badge risk-NORMAL" id="riskBadge">NORMAL</div>
+      </div>
+
+      <div style="font-size:0.8rem; color:#94a3b8; line-height:1.5;">
+        Sub-300ms kinematic vector engine continuously predicts torso lean, lunges, reaching vectors, and body twists before actions occur.
+      </div>
+    </div>
+
+    <!-- Camera Status -->
+    <div class="card">
+      <div class="card-title">🎥 Camera Status</div>
+      <div id="cameraList" style="display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:0.82rem; color:#64748b;">Connecting to camera streams...</div>
+      </div>
+    </div>
+
+    <!-- Performance Telemetry -->
+    <div class="card">
+      <div class="card-title">⚡ System Performance</div>
+      
+      <div class="perf-item">
+        <div class="perf-hdr"><span>Pipeline FPS</span><span id="lblFps">30 FPS</span></div>
+        <div class="bar-bg"><div class="bar-fill" id="barFps" style="width: 50%; background: #10b981;"></div></div>
+      </div>
+
+      <div class="perf-item">
+        <div class="perf-hdr"><span>CPU Utilization</span><span id="lblCpu">--%</span></div>
+        <div class="bar-bg"><div class="bar-fill" id="barCpu" style="width: 0%; background: #38bdf8;"></div></div>
+      </div>
+
+      <div class="perf-item">
+        <div class="perf-hdr"><span>RAM Usage</span><span id="lblRam">--%</span></div>
+        <div class="bar-bg"><div class="bar-fill" id="barRam" style="width: 0%; background: #a855f7;"></div></div>
+      </div>
+    </div>
   </div>
 </div>
-
-<!-- Camera Status -->
-<div class="section">
-  <h2>📷 Camera Status</h2>
-  <div class="camera-grid" id="cameraGrid">
-    <div style="color:#555;font-size:.85rem">Connecting to cameras...</div>
-  </div>
-</div>
-
-<!-- Performance -->
-<div class="section">
-  <h2>⚡ Performance</h2>
-  <div class="perf-bar">
-    <span style="width:100px">FPS</span>
-    <div class="bar-track"><div class="bar-fill" id="barFps" style="width:0%;background:#4caf50"></div></div>
-    <span id="valFps" style="width:55px;text-align:right">–</span>
-  </div>
-  <div class="perf-bar">
-    <span style="width:100px">CPU</span>
-    <div class="bar-track"><div class="bar-fill" id="barCpu" style="width:0%;background:#7eb8f7"></div></div>
-    <span id="valCpu" style="width:55px;text-align:right">–</span>
-  </div>
-  <div class="perf-bar">
-    <span style="width:100px">RAM</span>
-    <div class="bar-track"><div class="bar-fill" id="barRam" style="width:0%;background:#bb86fc"></div></div>
-    <span id="valRam" style="width:55px;text-align:right">–</span>
-  </div>
-</div>
-
-<!-- Recent Events -->
-<div class="section">
-  <h2>📋 Recent Events</h2>
-  <table class="event-table">
-    <thead>
-      <tr>
-        <th>Time</th>
-        <th>Type</th>
-        <th>Camera</th>
-        <th>Confidence</th>
-      </tr>
-    </thead>
-    <tbody id="eventsBody">
-      <tr><td colspan="4" style="color:#555;text-align:center;padding:20px">No events yet</td></tr>
-    </tbody>
-  </table>
-</div>
-
-<div class="last-update">Last update: <span id="lastUpdate">–</span></div>
 
 <script>
 const socket = io();
 
 socket.on("update", (data) => {
-  if (data.stats)   updateStats(data.stats);
-  if (data.events)  updateEvents(data.events);
+  if (data.events) updateEvents(data.events);
   if (data.cameras) updateCameras(data.cameras);
-  document.getElementById("lastUpdate").textContent = new Date().toLocaleTimeString();
 });
 
-// Fetch performance separately
+// Periodic performance fetch
 setInterval(() => {
-  fetch("/api/performance").then(r => r.json()).then(updatePerf).catch(()=>{});
-}, 2000);
-
-function updateStats(s) {
-  setText("statTotal",     s.total    ?? "–");
-  setText("statToday",     s.today    ?? "–");
-  setText("statViolence",  s.violence ?? "–");
-  setText("statTheftHigh", s.theft_high ?? "–");
-  setText("statTheftMed",  s.theft_med  ?? "–");
-  setText("statTheftLow",  s.theft_low  ?? "–");
-  setText("statWeapons",   s.weapons    ?? "–");
-
-  // Alert banner
-  const banner = document.getElementById("alertBanner");
-  if ((s.violence + s.theft_high + s.weapons) > 0) {
-    banner.style.display = "block";
-    setTimeout(() => banner.style.display = "none", 5000);
-  }
-}
+  fetch("/api/performance").then(r => r.json()).then(updatePerformance).catch(()=>{});
+}, 1500);
 
 function updateEvents(events) {
-  const tbody = document.getElementById("eventsBody");
+  const tbody = document.getElementById("eventsTbody");
   if (!events || events.length === 0) return;
-  tbody.innerHTML = events.map(e => `
-    <tr>
-      <td>${e.datetime || "–"}</td>
-      <td><span class="badge badge-${e.event_type}">${e.event_type}</span></td>
-      <td>${e.camera_name || `Cam ${e.camera_id}`}</td>
-      <td>${e.confidence ? (e.confidence * 100).toFixed(0) + "%" : "–"}</td>
-    </tr>
-  `).join("");
+  
+  tbody.innerHTML = events.map(e => {
+    let tagClass = "b-theft";
+    if (e.event_type.includes("violence")) tagClass = "b-violence";
+    if (e.event_type.includes("weapon")) tagClass = "b-weapon";
+
+    return `
+      <tr>
+        <td>${e.datetime || 'Just now'}</td>
+        <td><span class="badge-tag ${tagClass}">${e.event_type.toUpperCase()}</span></td>
+        <td>${e.camera_name || 'Camera ' + e.camera_id}</td>
+        <td>${e.confidence ? (e.confidence * 100).toFixed(0) + '%' : '--'}</td>
+      </tr>
+    `;
+  }).join("");
 }
 
 function updateCameras(cameras) {
-  const grid = document.getElementById("cameraGrid");
+  const container = document.getElementById("cameraList");
   if (!cameras || cameras.length === 0) return;
-  grid.innerHTML = cameras.map(c => `
-    <div class="cam-card">
-      <div class="cam-dot ${c.healthy ? 'ok' : 'err'}"></div>
-      <div class="cam-info">
-        <div class="name">${c.name}</div>
-        <div class="fps">${c.fps} FPS &nbsp;|&nbsp; ${c.frames} frames</div>
+
+  container.innerHTML = cameras.map(c => `
+    <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(30, 41, 59, 0.4); padding:10px 14px; border-radius:8px; border:1px solid rgba(255,255,255,0.05);">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div style="width:8px; height:8px; border-radius:50%; background:${c.healthy ? '#10b981' : '#ef4444'};"></div>
+        <span style="font-size:0.85rem; font-weight:600;">${c.name}</span>
       </div>
+      <span style="font-size:0.78rem; color:#94a3b8;">${c.fps} FPS</span>
     </div>
   `).join("");
 }
 
-function updatePerf(p) {
-  const fps = p.fps || 0;
-  setBar("barFps", "valFps", Math.min(fps/60*100, 100), `${fps} fps`);
-  if (p.cpu_percent !== undefined)
-    setBar("barCpu", "valCpu", p.cpu_percent, `${p.cpu_percent}%`);
-  if (p.ram_percent !== undefined)
-    setBar("barRam", "valRam", p.ram_percent, `${p.ram_percent}%`);
-}
-
-function setBar(barId, valId, pct, label) {
-  const bar = document.getElementById(barId);
-  if (bar) bar.style.width = pct + "%";
-  const val = document.getElementById(valId);
-  if (val) val.textContent = label;
-}
-
-function setText(id, val) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = val;
+function updatePerformance(p) {
+  if (p.fps !== undefined) {
+    const fpsPct = Math.min(100, (p.fps / 60) * 100);
+    document.getElementById("barFps").style.width = fpsPct + "%";
+    document.getElementById("lblFps").textContent = p.fps + " FPS";
+  }
+  if (p.cpu_percent !== undefined) {
+    document.getElementById("barCpu").style.width = p.cpu_percent + "%";
+    document.getElementById("lblCpu").textContent = p.cpu_percent + "%";
+  }
+  if (p.ram_percent !== undefined) {
+    document.getElementById("barRam").style.width = p.ram_percent + "%";
+    document.getElementById("lblRam").textContent = p.ram_percent + "%";
+  }
 }
 </script>
 </body>
