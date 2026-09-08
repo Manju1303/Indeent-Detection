@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# System & Logs
+logs/*.log
+logs/*.db
+logs/events.db
+logs/alert_images/*
+!logs/alert_images/.gitkeep
+
+# Models & Data
+data/
+*.pth
+*.pt
+!models/
+!models/*.py
+
+# Config & Environment
+.env
+*.yaml.bak
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+node_modules/
+dist/
+.local/
+.config/
+.agents/

@@ -1,0 +1,133 @@
+# ============================================================
+# settings.yaml — Central configuration for all components
+# Edit this file to customize your deployment
+# ============================================================
+
+# ── CAMERAS ────────────────────────────────────────────────
+cameras:
+  - id: 0
+    name: "Main Entrance"
+    source: 0               # 0 = default webcam, or RTSP URL:
+    # source: "rtsp://admin:password@192.168.1.64/stream1"
+    # source: "path/to/video.mp4"   # for video file testing
+    enabled: true
+    zones:                  # Define restricted/sensitive zones
+      - name: "checkout_area"
+        points: [[100, 200], [400, 200], [400, 500], [100, 500]]
+        theft_sensitive: true
+      - name: "entrance"
+        points: [[0, 0], [640, 0], [640, 150], [0, 150]]
+        theft_sensitive: false
+
+  # Add more cameras:
+  # - id: 1
+  #   name: "Back Storage"
+  #   source: "rtsp://192.168.1.65/stream"
+  #   enabled: true
+  #   zones: []
+
+# ── DETECTION ──────────────────────────────────────────────
+detection:
+  model: "yolov8s.pt"             # yolov8n.pt (faster) or yolov8m.pt (more accurate)
+  confidence_threshold: 0.45
+  iou_threshold: 0.45
+  device: "auto"                  # "auto", "cpu", "cuda", "mps"
+  image_size: 640
+  classes_of_interest:
+    - person                      # COCO class names
+    - knife
+    - scissors
+    - bottle
+    - backpack
+    - handbag
+    - suitcase
+    - cell phone
+    - laptop
+    - umbrella
+
+# ── TRACKING ───────────────────────────────────────────────
+tracking:
+  reid_grace_frames: 30           # frames before losing a track ID
+  max_disappeared: 50
+  min_hits: 3
+  iou_threshold: 0.3
+
+# ── POSE ESTIMATION ────────────────────────────────────────
+pose:
+  enabled: true
+  backend: "mediapipe"            # "mediapipe" or "yolov8-pose"
+  min_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+  run_every_n_frames: 3           # only run pose every N frames (saves CPU)
+
+# ── VIOLENCE DETECTION ─────────────────────────────────────
+violence:
+  enabled: true
+  model_path: "models/violence_model.pth"
+  sequence_length: 16             # frames fed into LSTM
+  confidence_threshold: 0.72     # raise to reduce false alarms
+  cooldown_seconds: 5             # min time between violence alerts
+
+# ── THEFT DETECTION ────────────────────────────────────────
+theft:
+  enabled: true
+  overlap_iou_threshold: 0.15    # hand-object overlap to count as "touch"
+  disappear_frames: 45           # frames object must be missing to confirm theft
+  score_thresholds:
+    low: 0.4
+    medium: 0.65
+    high: 0.85
+  cooldown_seconds: 10
+
+# ── ALERTS ─────────────────────────────────────────────────
+alerts:
+  # Minimum confidence before any alert fires
+  min_confidence: 0.65
+
+  # Global cooldown: won't fire same event type within N seconds
+  global_cooldown_seconds: 15
+
+  telegram:
+    enabled: false              # Set to true and fill token/chat_id
+    bot_token: "YOUR_BOT_TOKEN_HERE"
+    chat_id: "YOUR_CHAT_ID_HERE"
+    send_image: true
+    send_video_clip: false      # requires more memory
+
+  email:
+    enabled: false
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    sender_email: "your_email@gmail.com"
+    sender_password: "your_app_password"  # Use Gmail App Password
+    recipient_email: "security@yourcompany.com"
+    send_image: true
+
+  local:
+    enabled: true
+    sound_file: "alerts/alert.wav"   # path to .wav file
+    log_to_console: true
+
+# ── DASHBOARD ──────────────────────────────────────────────
+dashboard:
+  enabled: true
+  host: "0.0.0.0"
+  port: 5000
+  max_events_shown: 100
+  update_interval_ms: 500
+
+# ── LOGGING ────────────────────────────────────────────────
+logging:
+  db_path: "logs/events.db"
+  save_alert_images: true
+  alert_images_dir: "logs/alert_images"
+  max_stored_images: 500
+  log_level: "INFO"             # DEBUG, INFO, WARNING, ERROR
+
+# ── PERFORMANCE ────────────────────────────────────────────
+performance:
+  frame_skip: 2                 # process every Nth frame (1 = all frames)
+  max_fps: 30                   # cap processing FPS
+  use_fp16: false               # true only with CUDA GPU
+  use_multiprocessing: true
+  num_workers: 2

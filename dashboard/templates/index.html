@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🔒 Security Monitor Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #0d0d1a;
+    color: #e0e0f0;
+    min-height: 100vh;
+  }
+  header {
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #2a2a4a;
+  }
+  header h1 { font-size: 1.3rem; color: #7eb8f7; letter-spacing: 1px; }
+  .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: #4caf50; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .main { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; padding: 20px; }
+  .stat-card {
+    background: #12122a;
+    border: 1px solid #2a2a4a;
+    border-radius: 10px;
+    padding: 18px;
+    text-align: center;
+    transition: border-color .3s;
+  }
+  .stat-card:hover { border-color: #4a7fff; }
+  .stat-card .value { font-size: 2.2rem; font-weight: bold; margin: 8px 0; }
+  .stat-card .label { font-size: 0.8rem; color: #8888aa; text-transform: uppercase; letter-spacing: 1px; }
+  .c-blue   { color: #7eb8f7; }
+  .c-red    { color: #ff4d4d; }
+  .c-orange { color: #ff9944; }
+  .c-yellow { color: #ffd740; }
+  .c-green  { color: #4caf50; }
+  .c-purple { color: #bb86fc; }
+  .section { padding: 0 20px 20px; }
+  .section h2 { font-size: 1rem; color: #7eb8f7; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #2a2a4a; }
+  .event-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .event-table th { background: #1a1a2e; padding: 10px 12px; text-align: left; color: #8888aa; font-weight: 500; }
+  .event-table td { padding: 10px 12px; border-bottom: 1px solid #1e1e3a; }
+  .event-table tr:hover td { background: #1a1a2e; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .badge-violence { background: #ff4d4d22; color: #ff4d4d; border: 1px solid #ff4d4d44; }
+  .badge-theft_high { background: #ff4d4d22; color: #ff6b6b; border: 1px solid #ff4d4d44; }
+  .badge-theft_medium { background: #ff994422; color: #ff9944; border: 1px solid #ff994444; }
+  .badge-theft_low { background: #ffd74022; color: #ffd740; border: 1px solid #ffd74044; }
+  .badge-weapon { background: #bb86fc22; color: #bb86fc; border: 1px solid #bb86fc44; }
+  .camera-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .cam-card {
+    background: #12122a;
+    border: 1px solid #2a2a4a;
+    border-radius: 8px;
+    padding: 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .cam-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .cam-dot.ok { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+  .cam-dot.err { background: #ff4d4d; }
+  .cam-info .name { font-weight: 600; font-size: 0.9rem; }
+  .cam-info .fps { font-size: 0.75rem; color: #8888aa; margin-top: 2px; }
+  .perf-bar { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 0.82rem; }
+  .bar-track { flex: 1; height: 6px; background: #2a2a4a; border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width .5s; }
+  .alert-banner {
+    display: none;
+    background: #ff1a1a;
+    color: white;
+    text-align: center;
+    padding: 12px;
+    font-weight: bold;
+    font-size: 1rem;
+    animation: blink 1s infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.6} }
+  .last-update { font-size: 0.75rem; color: #555588; padding: 0 20px 16px; }
+</style>
+</head>
+<body>
+
+<div class="alert-banner" id="alertBanner">🚨 CRITICAL ALERT DETECTED</div>
+
+<header>
+  <h1>🔒 Security Monitor — Real-Time Dashboard</h1>
+  <div style="font-size:.85rem;color:#8888aa">
+    <span class="status-dot"></span>Live
+  </div>
+</header>
+
+<!-- Stats Grid -->
+<div class="main" id="statsGrid">
+  <div class="stat-card">
+    <div class="label">Total Events</div>
+    <div class="value c-blue" id="statTotal">–</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Today</div>
+    <div class="value c-purple" id="statToday">–</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Violence</div>
+    <div class="value c-red" id="statViolence">–</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Theft High</div>
+    <div class="value c-red" id="statTheftHigh">–</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Theft Medium</div>
+    <div class="value c-orange" id="statTheftMed">–</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Theft Low</div>
+    <div class="value c-yellow" id="statTheftLow">–</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Weapons</div>
+    <div class="value c-purple" id="statWeapons">–</div>
+  </div>
+</div>
+
+<!-- Camera Status -->
+<div class="section">
+  <h2>📷 Camera Status</h2>
+  <div class="camera-grid" id="cameraGrid">
+    <div style="color:#555;font-size:.85rem">Connecting to cameras...</div>
+  </div>
+</div>
+
+<!-- Performance -->
+<div class="section">
+  <h2>⚡ Performance</h2>
+  <div class="perf-bar">
+    <span style="width:100px">FPS</span>
+    <div class="bar-track"><div class="bar-fill" id="barFps" style="width:0%;background:#4caf50"></div></div>
+    <span id="valFps" style="width:55px;text-align:right">–</span>
+  </div>
+  <div class="perf-bar">
+    <span style="width:100px">CPU</span>
+    <div class="bar-track"><div class="bar-fill" id="barCpu" style="width:0%;background:#7eb8f7"></div></div>
+    <span id="valCpu" style="width:55px;text-align:right">–</span>
+  </div>
+  <div class="perf-bar">
+    <span style="width:100px">RAM</span>
+    <div class="bar-track"><div class="bar-fill" id="barRam" style="width:0%;background:#bb86fc"></div></div>
+    <span id="valRam" style="width:55px;text-align:right">–</span>
+  </div>
+</div>
+
+<!-- Recent Events -->
+<div class="section">
+  <h2>📋 Recent Events</h2>
+  <table class="event-table">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Type</th>
+        <th>Camera</th>
+        <th>Confidence</th>
+      </tr>
+    </thead>
+    <tbody id="eventsBody">
+      <tr><td colspan="4" style="color:#555;text-align:center;padding:20px">No events yet</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="last-update">Last update: <span id="lastUpdate">–</span></div>
+
+<script>
+const socket = io();
+
+socket.on("update", (data) => {
+  if (data.stats)   updateStats(data.stats);
+  if (data.events)  updateEvents(data.events);
+  if (data.cameras) updateCameras(data.cameras);
+  document.getElementById("lastUpdate").textContent = new Date().toLocaleTimeString();
+});
+
+// Fetch performance separately
+setInterval(() => {
+  fetch("/api/performance").then(r => r.json()).then(updatePerf).catch(()=>{});
+}, 2000);
+
+function updateStats(s) {
+  setText("statTotal",     s.total    ?? "–");
+  setText("statToday",     s.today    ?? "–");
+  setText("statViolence",  s.violence ?? "–");
+  setText("statTheftHigh", s.theft_high ?? "–");
+  setText("statTheftMed",  s.theft_med  ?? "–");
+  setText("statTheftLow",  s.theft_low  ?? "–");
+  setText("statWeapons",   s.weapons    ?? "–");
+
+  // Alert banner
+  const banner = document.getElementById("alertBanner");
+  if ((s.violence + s.theft_high + s.weapons) > 0) {
+    banner.style.display = "block";
+    setTimeout(() => banner.style.display = "none", 5000);
+  }
+}
+
+function updateEvents(events) {
+  const tbody = document.getElementById("eventsBody");
+  if (!events || events.length === 0) return;
+  tbody.innerHTML = events.map(e => `
+    <tr>
+      <td>${e.datetime || "–"}</td>
+      <td><span class="badge badge-${e.event_type}">${e.event_type}</span></td>
+      <td>${e.camera_name || `Cam ${e.camera_id}`}</td>
+      <td>${e.confidence ? (e.confidence * 100).toFixed(0) + "%" : "–"}</td>
+    </tr>
+  `).join("");
+}
+
+function updateCameras(cameras) {
+  const grid = document.getElementById("cameraGrid");
+  if (!cameras || cameras.length === 0) return;
+  grid.innerHTML = cameras.map(c => `
+    <div class="cam-card">
+      <div class="cam-dot ${c.healthy ? 'ok' : 'err'}"></div>
+      <div class="cam-info">
+        <div class="name">${c.name}</div>
+        <div class="fps">${c.fps} FPS &nbsp;|&nbsp; ${c.frames} frames</div>
+      </div>
+    </div>
+  `).join("");
+}
+
+function updatePerf(p) {
+  const fps = p.fps || 0;
+  setBar("barFps", "valFps", Math.min(fps/60*100, 100), `${fps} fps`);
+  if (p.cpu_percent !== undefined)
+    setBar("barCpu", "valCpu", p.cpu_percent, `${p.cpu_percent}%`);
+  if (p.ram_percent !== undefined)
+    setBar("barRam", "valRam", p.ram_percent, `${p.ram_percent}%`);
+}
+
+function setBar(barId, valId, pct, label) {
+  const bar = document.getElementById(barId);
+  if (bar) bar.style.width = pct + "%";
+  const val = document.getElementById(valId);
+  if (val) val.textContent = label;
+}
+
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+</script>
+</body>
+</html>
