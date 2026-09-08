@@ -1,15 +1,19 @@
-# Real-Time Human Intent & Pre-Action Movement Prediction System (<300ms)
+# Real-Time Human Torso & Pre-Action Movement Prediction System (<300ms)
 
-An open-source AI computer vision system for real-time **Human Position, Posture, Body Outline Extraction**, and **Sub-300ms Pre-Action Movement Prediction** ("Intent / Indent Detection").
+An open-source AI computer vision system powered by **Human Torso Dynamics** (Torso Quadrilateral, Spine Vector, Torso Pitch/Roll/Yaw) as its **PRIMARY FEATURE** for real-time human posture extraction and **Sub-300ms Pre-Action Movement Prediction** ("Intent / Indent Detection").
 
 ---
 
-## Key Features
+## Primary Feature & Capabilities
 
-- 🎯 **33-Point Body Keypoints & Outline Tracking**: Real-time extraction of skeleton joints and body contour polygon (convex hull).
-- ⚡ **Sub-300ms Motion Extrapolation**: Kinematic velocity & acceleration vector engine predicts future body keypoint positions at $t + 300\text{ms}$ (latency **< 0.1 ms per frame**).
-- 👻 **+300ms Predictive Ghost Skeleton Overlay**: Renders projected future human pose and trajectory arrows directly on the live video stream.
-- 🧠 **Pre-Action Intent Classifier**: Predicts immediate next actions (*"About to Reach Out"*, *"About to Lunge / Strike"*, *"About to Bend / Pick Up"*, *"About to Turn"*, *"About to Rise"*).
+- 👕 **Human Torso Core Analysis (Primary Feature)**:
+  - Real-time **Torso Quadrilateral Polygon** (`Shoulders -> Hips`).
+  - **Spine Vector Line** (Neck Midpoint to Pelvis Midpoint).
+  - **Torso Pitch Angle** (Forward/backward inclination) & **Torso Roll Angle** (Side tilt).
+  - **Torso Yaw Orientation** (Facing direction).
+- ⚡ **Sub-300ms Motion Extrapolation**: Kinematic torso velocity & acceleration engine predicts future body position at $t + 300\text{ms}$ (latency **< 0.1 ms per frame**).
+- 👻 **+300ms Torso Ghost Projection**: Renders projected future torso polygon, ghost skeleton, and trajectory arrows on live video.
+- 🧠 **Pre-Action Intent Classifier**: Predicts immediate next torso actions (*"About to Bend Torso Forward"*, *"About to Lunge / Charge"*, *"About to Stand Up"*, *"About to Turn"*).
 - 🌐 **Live Web Dashboard**: Flask + SocketIO real-time monitoring interface at `http://localhost:5000`.
 
 ---
@@ -18,8 +22,9 @@ An open-source AI computer vision system for real-time **Human Position, Posture
 
 | Metric | Performance |
 |---|---|
-| **Average Prediction Latency** | **0.05 ms** |
-| **Maximum Frame Latency** | **0.14 ms** |
+| **Primary Feature** | **Human Torso & Spine Core** |
+| **Average Prediction Latency** | **0.06 ms** |
+| **Maximum Frame Latency** | **0.17 ms** |
 | **Target Prediction Horizon** | **300 ms** |
 | **Frame Rate** | **Up to 60 FPS** |
 

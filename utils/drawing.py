@@ -1,6 +1,6 @@
 """
 utils/drawing.py
-Visualization utilities: bounding boxes, human keypoints, body outline, predictive ghost skeleton (+300ms), and Intent HUD overlays.
+Visualization utilities: Bounding boxes, Primary Torso Core Polygon, Spine Vector, Skeleton Keypoints, +300ms Predictive Ghost Skeleton, and Torso Telemetry HUD.
 """
 
 import cv2
@@ -8,13 +8,16 @@ import numpy as np
 from typing import List, Optional
 from datetime import datetime
 
-from core.pose_estimator import HumanPose, SKELETON_CONNECTIONS
+from core.pose_estimator import HumanPose, SKELETON_CONNECTIONS, TorsoState
 from core.intent_predictor import IntentPrediction
 
 # Color palette (BGR)
 COLORS = {
     "person":           (255, 180,  50),   # orange
-    "ghost_skeleton":   (255, 240,   0),   # bright cyan / cyan-yellow (+300ms prediction)
+    "torso_core":       (255, 200,   0),   # Golden Cyan Torso Fill (PRIMARY FEATURE)
+    "spine_vector":     (  0, 255, 255),   # Bright Yellow Spine Line
+    "ghost_skeleton":   (255, 240,   0),   # Bright cyan (+300ms prediction)
+    "ghost_torso":      (255, 100,   0),   # Projected Torso (+300ms)
     "outline":          (255, 200, 100),   # translucent cyan
     "weapon":           (  0,   0, 255),   # red
     "object":           ( 50, 200, 255),   # yellow
@@ -36,7 +39,7 @@ FONT_BOLD = cv2.FONT_HERSHEY_DUPLEX
 
 
 class FrameDrawer:
-    """Draws all visual overlays, body outlines, skeletons, and +300ms predictive motion vectors on frames."""
+    """Draws visual overlays, emphasizing the HUMAN TORSO (Primary Feature), Spine Vector, and +300ms Ghost Skeleton."""
 
     def draw(
         self,
@@ -52,7 +55,7 @@ class FrameDrawer:
         zones: list = None,
     ) -> np.ndarray:
         """
-        Full annotation pipeline with intent & movement prediction overlays.
+        Full annotation pipeline highlighting Torso Core & Sub-300ms Intent Prediction.
         """
         if zones:
             self._draw_zones(frame, zones)
@@ -64,7 +67,7 @@ class FrameDrawer:
             pred_map = {p.track_id: p for p in (predictions or []) if p.track_id is not None}
             for pose in poses:
                 pred = pred_map.get(pose.track_id)
-                self._draw_pose_and_intent(frame, pose, pred)
+                self._draw_torso_and_pose(frame, pose, pred)
 
         self._draw_hud(frame, fps, camera_name, violence_score, violence_detected, theft_events or [], predictions or [])
 
@@ -104,37 +107,50 @@ class FrameDrawer:
             cv2.putText(frame, "[WEAPON]", (cx - 40, cy - 10),
                         FONT_BOLD, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
 
-    def _draw_pose_and_intent(self, frame: np.ndarray, pose: HumanPose, pred: Optional[IntentPrediction]):
-        """Draw Body Outline, Skeleton Keypoints, Motion Trajectory Arrow, and +300ms Ghost Skeleton."""
-        # 1. Body Outline Polygon (Convex Hull)
-        if pose.body_outline and len(pose.body_outline) >= 3:
-            pts_arr = np.array(pose.body_outline, dtype=np.int32)
-            overlay = frame.copy()
-            cv2.fillPoly(overlay, [pts_arr], COLORS["outline"])
-            cv2.addWeighted(overlay, 0.15, frame, 0.85, 0, frame)
-            cv2.polylines(frame, [pts_arr], True, COLORS["person"], 1, cv2.LINE_AA)
+    def _draw_torso_and_pose(self, frame: np.ndarray, pose: HumanPose, pred: Optional[IntentPrediction]):
+        """Draw PRIMARY FEATURE: Torso Core Polygon, Spine Vector, Keypoints, and +300ms Ghost Projection."""
+        torso = pose.torso
 
-        # 2. Current Skeleton Bones
+        # 1. PRIMARY FEATURE: TORSO CORE QUADRILATERAL FILL & HIGHLIGHT
+        if len(torso.polygon) == 4:
+            pts_arr = np.array(torso.polygon, dtype=np.int32)
+            overlay = frame.copy()
+            cv2.fillPoly(overlay, [pts_arr], COLORS["torso_core"])
+            cv2.addWeighted(overlay, 0.25, frame, 0.75, 0, frame)
+            cv2.polylines(frame, [pts_arr], True, (0, 255, 255), 2, cv2.LINE_AA)
+
+        # 2. SPINE VECTOR (Neck to Pelvis with direction marker)
+        neck_pt = torso.spine_neck_pt
+        pelvis_pt = torso.spine_pelvis_pt
+        cv2.line(frame, neck_pt, pelvis_pt, COLORS["spine_vector"], 3, cv2.LINE_AA)
+        cv2.circle(frame, neck_pt, 5, (0, 255, 255), -1, cv2.LINE_AA)
+        cv2.circle(frame, pelvis_pt, 5, (0, 255, 255), -1, cv2.LINE_AA)
+
+        # 3. Body Skeleton Limbs
         kps = pose.keypoints
         for j1, j2 in SKELETON_CONNECTIONS:
             if j1 in kps and j2 in kps:
                 p1, p2 = kps[j1], kps[j2]
-                cv2.line(frame, p1, p2, (0, 255, 255), 2, cv2.LINE_AA)
+                cv2.line(frame, p1, p2, (255, 180, 50), 2, cv2.LINE_AA)
 
-        # Draw Keypoint Joint Circles
         for kp_name, (kx, ky) in kps.items():
             cv2.circle(frame, (kx, ky), 4, (0, 165, 255), -1, cv2.LINE_AA)
 
-        # 3. Motion Trajectory Vector & +300ms Ghost Skeleton
+        # 4. TORSO TRAJECTORY VECTOR & +300ms GHOST SKELETON
         if pred:
-            cx, cy = pose.centroid
-            fcx, fcy = pred.future_centroid_300ms
+            tcx, tcy = torso.center
+            ftcx, ftcy = pred.future_torso_center_300ms
 
-            # Trajectory Line & Arrow
-            cv2.arrowedLine(frame, (cx, cy), (fcx, fcy), (0, 255, 255), 2, cv2.LINE_AA, tipLength=0.25)
-            cv2.putText(frame, f"+300ms", (fcx + 5, fcy), FONT, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
+            # Torso Movement Vector Arrow
+            cv2.arrowedLine(frame, (tcx, tcy), (ftcx, ftcy), (0, 255, 255), 2, cv2.LINE_AA, tipLength=0.25)
+            cv2.putText(frame, f"+300ms Torso", (ftcx + 5, ftcy), FONT, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
 
-            # +300ms Predictive Ghost Skeleton (Dashed / Bright Yellow)
+            # Projected Torso Polygon at +300ms
+            if pred.future_torso_polygon_300ms and len(pred.future_torso_polygon_300ms) == 4:
+                fptr_arr = np.array(pred.future_torso_polygon_300ms, dtype=np.int32)
+                cv2.polylines(frame, [fptr_arr], True, COLORS["ghost_torso"], 1, cv2.LINE_AA)
+
+            # +300ms Ghost Skeleton
             fkps = pred.future_keypoints_300ms
             if fkps:
                 for j1, j2 in SKELETON_CONNECTIONS:
@@ -144,17 +160,17 @@ class FrameDrawer:
                 for fkp_name, (fkx, fky) in fkps.items():
                     cv2.circle(frame, (fkx, fky), 3, COLORS["ghost_skeleton"], -1, cv2.LINE_AA)
 
-            # Pre-Action Intent Card Badge over head
+            # Torso Telemetry & Pre-Action Intent Badge
             x1, y1, x2, y2 = pose.bbox
-            badge_text = f"Intent (<300ms): {pred.predicted_intent} ({pred.intent_confidence:.0%})"
-            (bw, bh), _ = cv2.getTextSize(badge_text, FONT_BOLD, 0.5, 1)
-            bx1 = max(5, cx - bw // 2)
+            badge_text = f"Torso Pitch: {torso.pitch_angle_deg:.0f}deg | Intent (<300ms): {pred.predicted_intent}"
+            (bw, bh), _ = cv2.getTextSize(badge_text, FONT_BOLD, 0.45, 1)
+            bx1 = max(5, tcx - bw // 2)
             by1 = max(40, y1 - 25)
 
             card_color = COLORS["alert"] if pred.action_risk_level == "HIGH_RISK" else COLORS["warn"] if pred.action_risk_level == "WARNING" else COLORS["hud_bg"]
             cv2.rectangle(frame, (bx1 - 4, by1 - bh - 6), (bx1 + bw + 4, by1 + 4), card_color, -1)
             cv2.rectangle(frame, (bx1 - 4, by1 - bh - 6), (bx1 + bw + 4, by1 + 4), (0, 255, 255), 1)
-            cv2.putText(frame, badge_text, (bx1, by1), FONT_BOLD, 0.5, COLORS["hud_text"], 1, cv2.LINE_AA)
+            cv2.putText(frame, badge_text, (bx1, by1), FONT_BOLD, 0.45, COLORS["hud_text"], 1, cv2.LINE_AA)
 
     def _draw_zones(self, frame, zones: list):
         for zone in zones:
@@ -179,11 +195,10 @@ class FrameDrawer:
                   violence_detected, theft_events, predictions: List[IntentPrediction]):
         h, w = frame.shape[:2]
 
-        # Top bar
         cv2.rectangle(frame, (0, 0), (w, 38), (20, 20, 20), -1)
 
         ts = datetime.now().strftime("%H:%M:%S")
-        cv2.putText(frame, f"[CAM] {camera_name} | PRE-ACTION AI (<300ms)", (8, 24),
+        cv2.putText(frame, f"[CAM] {camera_name} | TORSO PRE-ACTION ENGINE (<300ms)", (8, 24),
                     FONT_BOLD, 0.55, COLORS["hud_text"], 1, cv2.LINE_AA)
         cv2.putText(frame, ts, (w - 80, 24),
                     FONT, 0.55, COLORS["hud_text"], 1, cv2.LINE_AA)
@@ -192,12 +207,11 @@ class FrameDrawer:
         cv2.putText(frame, f"FPS:{fps:.0f}", (w - 160, 24),
                     FONT, 0.55, fps_color, 1, cv2.LINE_AA)
 
-        # Bottom status bar
         cv2.rectangle(frame, (0, h - 35), (w, h), (20, 20, 20), -1)
 
         if predictions:
             latest_pred = predictions[-1]
-            intent_str = f"PREACTION: {latest_pred.predicted_intent.upper()}"
+            intent_str = f"TORSO INTENT: {latest_pred.predicted_intent.upper()}"
             cv2.putText(frame, intent_str, (10, h - 12),
                         FONT_BOLD, 0.5, (0, 255, 255), 1, cv2.LINE_AA)
 
