@@ -3,13 +3,29 @@
 # Edit this file to customize your deployment
 # ============================================================
 
+# ── CAMERA & RESOLUTION ──────────────────────────────────────
+camera:
+  source: 0                     # Use 0 for webcam, or "rtsp://username:password@ip:554/stream"
+  width: 1280
+  height: 720
+  fps: 30
+
+# ── SPATIO-TEMPORAL PIPELINE ───────────────────────────────
+pipeline:
+  history_window: 15            # Number of past frames evaluated (~500ms data at 30 FPS)
+  predict_horizon: 10           # Number of frames to forecast into future (~300ms window)
+  num_joints: 17                # COCO standard joints layout
+  confidence_threshold: 0.45
+
+models:
+  pose_path: "models/rtmpose_m.onnx"
+  intent_path: "models/intent_stgcn.onnx"
+
 # ── CAMERAS ────────────────────────────────────────────────
 cameras:
   - id: 0
     name: "Main Entrance"
     source: 0               # 0 = default webcam, or RTSP URL:
-    # source: "rtsp://admin:password@192.168.1.64/stream1"
-    # source: "path/to/video.mp4"   # for video file testing
     enabled: true
     zones:                  # Define restricted/sensitive zones
       - name: "checkout_area"

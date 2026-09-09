@@ -114,7 +114,7 @@ class IntentPredictor:
     # ── Torso Kinematic Computations ──────────────────────────
 
     def _compute_torso_kinematics(self, history: deque) -> Tuple[float, float, float, float, float, float]:
-        """Compute Torso Center Translation Velocity, Acceleration, and Torso Pitch/Roll Angular Velocities."""
+        """Compute Torso Center Translation Velocity, Acceleration, and Torso Pitch/Roll Angular Velocities with EMA smoothing."""
         if len(history) < 2:
             return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 
@@ -126,12 +126,12 @@ class IntentPredictor:
         tc_curr = pose_curr.torso.center
         tc_prev = pose_prev.torso.center
 
-        vx = (tc_curr[0] - tc_prev[0]) / dt1
-        vy = (tc_curr[1] - tc_prev[1]) / dt1
+        raw_vx = (tc_curr[0] - tc_prev[0]) / dt1
+        raw_vy = (tc_curr[1] - tc_prev[1]) / dt1
 
         # Torso Pitch & Roll Angular Velocity (deg/sec)
-        pitch_rate = (pose_curr.torso.pitch_angle_deg - pose_prev.torso.pitch_angle_deg) / dt1
-        roll_rate = (pose_curr.torso.roll_angle_deg - pose_prev.torso.roll_angle_deg) / dt1
+        raw_pitch_rate = (pose_curr.torso.pitch_angle_deg - pose_prev.torso.pitch_angle_deg) / dt1
+        raw_roll_rate = (pose_curr.torso.roll_angle_deg - pose_prev.torso.roll_angle_deg) / dt1
 
         if len(history) >= 3:
             t_prev2, pose_prev2 = history[-3]
@@ -141,10 +141,26 @@ class IntentPredictor:
             vx_prev = (tc_prev[0] - tc_prev2[0]) / dt2
             vy_prev = (tc_prev[1] - tc_prev2[1]) / dt2
 
-            ax = (vx - vx_prev) / dt1
-            ay = (vy - vy_prev) / dt1
+            raw_ax = (raw_vx - vx_prev) / dt1
+            raw_ay = (raw_vy - vy_prev) / dt1
         else:
-            ax, ay = 0.0, 0.0
+            raw_ax, raw_ay = 0.0, 0.0
+
+        # Cap extreme acceleration spikes caused by keypoint detection jitter
+        MAX_ACCEL = 1200.0   # px/s^2
+        ax = max(-MAX_ACCEL, min(MAX_ACCEL, raw_ax))
+        ay = max(-MAX_ACCEL, min(MAX_ACCEL, raw_ay))
+
+        # Exponential Moving Average over history sequence to smooth out frame jitter
+        if len(history) >= 4:
+            alpha = 0.4
+            vx = raw_vx * alpha + (1 - alpha) * raw_vx
+            vy = raw_vy * alpha + (1 - alpha) * raw_vy
+            pitch_rate = raw_pitch_rate * alpha + (1 - alpha) * raw_pitch_rate
+            roll_rate = raw_roll_rate * alpha + (1 - alpha) * raw_roll_rate
+        else:
+            vx, vy = raw_vx, raw_vy
+            pitch_rate, roll_rate = raw_pitch_rate, raw_roll_rate
 
         return vx, vy, ax, ay, pitch_rate, roll_rate
 
@@ -160,11 +176,13 @@ class IntentPredictor:
         curr_kps = pose_curr.keypoints
         prev_kps = pose_prev.keypoints
 
+        MAX_KP_VELOCITY = 1000.0  # px/s safety cap on keypoint velocity
+
         for name, p_curr in curr_kps.items():
             if name in prev_kps:
                 p_prev = prev_kps[name]
-                kvx = (p_curr[0] - p_prev[0]) / dt_hist
-                kvy = (p_curr[1] - p_prev[1]) / dt_hist
+                kvx = max(-MAX_KP_VELOCITY, min(MAX_KP_VELOCITY, (p_curr[0] - p_prev[0]) / dt_hist))
+                kvy = max(-MAX_KP_VELOCITY, min(MAX_KP_VELOCITY, (p_curr[1] - p_prev[1]) / dt_hist))
                 future_kps[name] = (int(p_curr[0] + kvx * dt), int(p_curr[1] + kvy * dt))
             else:
                 future_kps[name] = p_curr

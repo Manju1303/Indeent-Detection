@@ -10,8 +10,8 @@ venv/
 
 # System & Logs
 logs/*.log
-logs/*.db
-logs/events.db
+logs/*.db*
+logs/events.db*
 logs/alert_images/*
 !logs/alert_images/.gitkeep
 

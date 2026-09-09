@@ -105,25 +105,26 @@ class ViolenceDetector:
 
     def _heuristic_score(self) -> float:
         """
-        Fallback when no model is loaded.
-        Uses optical flow magnitude as violence proxy.
-        High motion = higher score. Not as accurate but better than nothing.
+        Fast motion heuristic fallback.
+        Uses frame differencing (absdiff) for ultra-fast motion estimation (<0.2ms).
         """
         if len(self._frame_buf) < 2:
             return 0.0
         frames = list(self._frame_buf)
-        scores = []
-        for i in range(1, min(4, len(frames))):
-            f_prev = frames[i-1].astype(np.uint8) if frames[i-1].dtype != np.uint8 else frames[i-1]
-            f_curr = frames[i].astype(np.uint8) if frames[i].dtype != np.uint8 else frames[i]
-            prev = cv2.cvtColor(f_prev, cv2.COLOR_RGB2GRAY)
-            curr = cv2.cvtColor(f_curr, cv2.COLOR_RGB2GRAY)
-            flow = cv2.calcOpticalFlowFarneback(prev, curr, None,
-                0.5, 3, 15, 3, 5, 1.2, 0)
-            mag = np.mean(np.sqrt(flow[..., 0]**2 + flow[..., 1]**2))
-            # Normalize: 0 = calm, 1 = very high motion
-            scores.append(min(mag / 20.0, 1.0))
-        return float(np.mean(scores)) if scores else 0.0
+        f_prev = frames[-2].astype(np.uint8) if frames[-2].dtype != np.uint8 else frames[-2]
+        f_curr = frames[-1].astype(np.uint8) if frames[-1].dtype != np.uint8 else frames[-1]
+
+        prev_gray = cv2.cvtColor(f_prev, cv2.COLOR_RGB2GRAY)
+        curr_gray = cv2.cvtColor(f_curr, cv2.COLOR_RGB2GRAY)
+
+        diff = cv2.absdiff(prev_gray, curr_gray)
+        # Motion thresholding
+        _, motion_mask = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
+        motion_ratio = np.count_nonzero(motion_mask) / float(motion_mask.size)
+
+        # Normalize score: 0 = calm/static, 1.0 = rapid violent motion
+        score = min(motion_ratio * 4.0, 1.0)
+        return float(score)
 
     def _preprocess(self, frame: np.ndarray) -> np.ndarray:
         """Resize and normalize frame for model input."""

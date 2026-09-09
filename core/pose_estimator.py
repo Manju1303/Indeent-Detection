@@ -190,9 +190,13 @@ class PoseEstimator:
 
         if self._mp_pose is not None:
             try:
-                pad_x, pad_y = int(w * 0.1), int(h * 0.1)
-                rx1, ry1 = max(0, x1 - pad_x), max(0, y1 - pad_y)
-                rx2, ry2 = min(frame.shape[1], x2 + pad_x), min(frame.shape[0], y2 + pad_y)
+                # Square-pad bounding box to maintain 1:1 aspect ratio for MediaPipe
+                max_dim = max(w, h)
+                cx_box, cy_box = (x1 + x2) // 2, (y1 + y2) // 2
+                half_dim = int(max_dim * 0.6)
+
+                rx1, ry1 = max(0, cx_box - half_dim), max(0, cy_box - half_dim)
+                rx2, ry2 = min(frame.shape[1], cx_box + half_dim), min(frame.shape[0], cy_box + half_dim)
                 crop = frame[ry1:ry2, rx1:rx2]
 
                 if crop.size > 0:
@@ -284,3 +288,74 @@ class PoseEstimator:
 
         x1, y1, x2, y2 = bbox
         return [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+
+
+class RealTimePoseEstimator:
+    """
+    ONNX & Geometric 17-Joint COCO Frontend Pose Estimator.
+    Binds to CUDA/CPU Execution Providers and outputs normalized 17x2 joint matrix.
+    """
+
+    COCO_17_KEYS = [
+        "NOSE", "LEFT_EYE", "RIGHT_EYE", "LEFT_EAR", "RIGHT_EAR",
+        "LEFT_SHOULDER", "RIGHT_SHOULDER", "LEFT_ELBOW", "RIGHT_ELBOW",
+        "LEFT_WRIST", "RIGHT_WRIST", "LEFT_HIP", "RIGHT_HIP",
+        "LEFT_KNEE", "RIGHT_KNEE", "LEFT_ANKLE", "RIGHT_ANKLE"
+    ]
+
+    def __init__(self, model_path: Optional[str] = None):
+        self.session = None
+        self.fallback_estimator = PoseEstimator()
+        if model_path:
+            self._init_onnx_session(model_path)
+
+    def _init_onnx_session(self, model_path: str):
+        try:
+            import os
+            if os.path.exists(model_path):
+                import onnxruntime as ort
+                opts = ort.SessionOptions()
+                opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+                providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+                self.session = ort.InferenceSession(model_path, opts, providers=providers)
+                self.input_name = self.session.get_inputs()[0].name
+                logger.info(f"[RealTimePoseEstimator] Bound ONNX session: {model_path}")
+            else:
+                logger.info(f"[RealTimePoseEstimator] ONNX model '{model_path}' not found. Using fallback estimator.")
+        except Exception as e:
+            logger.info(f"[RealTimePoseEstimator] ONNX load notice ({e}). Using fallback estimator.")
+
+    def preprocess(self, frame: np.ndarray) -> np.ndarray:
+        resized = cv2.resize(frame, (192, 256))
+        img = resized.astype(np.float32) / 255.0
+        img = np.transpose(img, (2, 0, 1))
+        return np.expand_dims(img, axis=0)
+
+    def extract_keypoints(self, frame: np.ndarray, bbox: Optional[Tuple[int, int, int, int]] = None) -> np.ndarray:
+        """
+        Extract keypoints returning normalized shape (17, 2).
+        """
+        h, w = frame.shape[:2]
+        if bbox is None:
+            bbox = (int(w * 0.25), int(h * 0.1), int(w * 0.75), int(h * 0.9))
+
+        if self.session is not None:
+            try:
+                input_tensor = self.preprocess(frame)
+                outputs = self.session.run(None, {self.input_name: input_tensor})
+                raw_kps = outputs[0]
+                if isinstance(raw_kps, np.ndarray) and raw_kps.shape[-2:] == (17, 2):
+                    return raw_kps.reshape(17, 2)
+            except Exception as e:
+                logger.debug(f"[RealTimePoseEstimator] ONNX inference error: {e}")
+
+        # Fallback using geometric pose estimator
+        pose = self.fallback_estimator.estimate_pose(frame, bbox, track_id=1)
+        matrix = np.zeros((17, 2), dtype=np.float32)
+        for idx, key in enumerate(self.COCO_17_KEYS):
+            if key in pose.keypoints:
+                pt = pose.keypoints[key]
+                matrix[idx] = [pt[0] / float(w), pt[1] / float(h)]
+            else:
+                matrix[idx] = [0.5, 0.5]
+        return matrix

@@ -81,6 +81,8 @@ class CameraPipeline:
         self.max_fps       = performance_config.get("max_fps", 30)
         self._frame_count  = 0
         self._last_frame_t = 0.0
+        self.latest_result = None
+        self.latest_annotated_frame = None
 
     def process(self, frame: np.ndarray) -> Optional[PipelineResult]:
         """
@@ -160,6 +162,8 @@ class CameraPipeline:
             zones=self.theft.zones,
         )
         result.annotated_frame = annotated
+        self.latest_annotated_frame = annotated
+        self.latest_result = result
 
         # ── 7. Performance Metrics ───────────────────────────
         result.fps           = self.fps_ctr.update()

@@ -76,15 +76,27 @@ class CameraStream:
         if self.cap:
             self.cap.release()
         source = self.config.source
-        self.cap = cv2.VideoCapture(source)
+
+        # For integer webcam sources on Windows, use DirectShow (CAP_DSHOW) for zero-latency live access
+        if isinstance(source, int):
+            import platform
+            if platform.system() == "Windows":
+                self.cap = cv2.VideoCapture(source, cv2.CAP_DSHOW)
+                if not self.cap.isOpened():
+                    self.cap = cv2.VideoCapture(source)
+            else:
+                self.cap = cv2.VideoCapture(source)
+        else:
+            self.cap = cv2.VideoCapture(source)
+
         if not self.cap.isOpened():
             logger.warning(f"[Camera {self.config.id}] Failed to open source: {source}")
             return False
-        # Reduce latency for RTSP streams
-        if isinstance(source, str) and source.startswith("rtsp"):
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+        # Set buffer size to 1 for real-time live detection (zero frame queuing)
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         self.connected = True
-        logger.info(f"[Camera {self.config.id}] Connected to: {source}")
+        logger.info(f"[Camera {self.config.id}] Connected to live source: {source}")
         return True
 
     def _read_loop(self):
@@ -99,8 +111,9 @@ class CameraStream:
 
             ret, frame = self.cap.read()
             if not ret:
-                logger.warning(f"[Camera {self.config.id}] Frame read failed. Reconnecting...")
+                logger.warning(f"[Camera {self.config.id}] Frame read failed. Retrying in {self.RECONNECT_DELAY}s...")
                 self.connected = False
+                time.sleep(self.RECONNECT_DELAY)
                 continue
 
             with self._lock:

@@ -258,7 +258,22 @@ const socket = io();
 socket.on("update", (data) => {
   if (data.events) updateEvents(data.events);
   if (data.cameras) updateCameras(data.cameras);
+  if (data.telemetry) updateTelemetry(data.telemetry);
 });
+
+function updateTelemetry(telemetry) {
+  if (!telemetry || telemetry.length === 0) return;
+  const t = telemetry[0];
+  if (t.pitch_deg !== undefined) document.getElementById("valPitch").textContent = t.pitch_deg + "°";
+  if (t.roll_deg !== undefined) document.getElementById("valRoll").textContent = t.roll_deg + "°";
+  if (t.latency_ms !== undefined) document.getElementById("valLatency").textContent = t.latency_ms + "ms";
+  if (t.predicted_intent) document.getElementById("intentVal").textContent = t.predicted_intent;
+  if (t.risk_level) {
+    const badge = document.getElementById("riskBadge");
+    badge.textContent = t.risk_level;
+    badge.className = `risk-badge risk-${t.risk_level}`;
+  }
+}
 
 // Periodic performance fetch
 setInterval(() => {

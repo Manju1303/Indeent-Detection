@@ -22,6 +22,9 @@ import threading
 from datetime import datetime
 
 # ── Logging setup ─────────────────────────────────────────────
+os.makedirs("logs", exist_ok=True)
+os.makedirs("logs/alert_images", exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
@@ -178,7 +181,8 @@ class SecuritySystem:
 
                 # Display window
                 if display and result.annotated_frame is not None:
-                    win_name = f"Camera {cam_id} — {self.cameras.streams[cam_id].config.name}"
+                    win_name = f"Camera {cam_id} - {self.cameras.streams[cam_id].config.name}"
+                    cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
                     cv2.imshow(win_name, result.annotated_frame)
 
                 # Log performance periodically

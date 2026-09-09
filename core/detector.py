@@ -102,16 +102,19 @@ class DetectionEngine:
 
         t0 = time.perf_counter()
 
-        results = self.model.predict(
-            source=frame,
-            conf=self.conf_thr,
-            iou=self.iou_thr,
-            imgsz=self.img_size,
-            device=self.device,
-            half=self.use_fp16,
-            verbose=False,
-            classes=self._class_ids_of_interest if self._class_ids_of_interest else None,
-        )
+        predict_kwargs = {
+            "source": frame,
+            "conf": self.conf_thr,
+            "iou": self.iou_thr,
+            "imgsz": self.img_size,
+            "device": self.device,
+            "verbose": False,
+            "classes": self._class_ids_of_interest if self._class_ids_of_interest else None,
+        }
+        if self.use_fp16 and self.device != "cpu":
+            predict_kwargs["half"] = True
+
+        results = self.model.predict(**predict_kwargs)
 
         detections = []
         for r in results:
